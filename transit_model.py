@@ -5,9 +5,9 @@ from scipy.stats import norm
 import warnings
 import matplotlib.pyplot as plt
 from matplotlib import rc
-rc('text', usetex=True)
-rc('xtick', labelsize=20)
-rc('ytick', labelsize=20)
+#rc('text', usetex=True)
+#rc('xtick', labelsize=20)
+#rc('ytick', labelsize=20)
 
 import astropy.units as u
 from astropy.timeseries import BoxLeastSquares
@@ -25,7 +25,8 @@ __all__ = ["get_data",
            "fit_model",
            "fit_best_window",
            "apply_transit_mask",
-           "plot_best_fit"]
+           "plot_best_fit",
+           "TransitModel"]
 
 
 def get_data(KICID, porb, window=51, plot=False):
@@ -230,3 +231,32 @@ def plot_best_fit(KICID, porb, t0, sol, chi_fit, wbest, lc_raw, lc_flat, lc_fold
     plt.close()
     
     return fig
+
+
+class TransitModel:
+    def __init__(self, KICID, porb):
+        
+        raw, flat, fold = get_data(KICID, porb)
+        
+        self._table = fold
+        self._time = fold['time'].value
+        self._flux = fold['flux'].value
+        self._flux_error = fold['flux_err'].value
+        
+        self._fit = None
+        
+    def get_table(self):
+        return self._table
+    
+    def fit(self, porb_guess):
+        self._fit = fit_model(self._time, self._flux, self._flux_error, porb_guess)
+        
+    def best_fit(self):
+        return self._fit
+    
+    def plot(self):
+        fig, ax = plt.subplots()
+        ax.plot(self._time, self._flux)
+        plt.show()
+        
+    
