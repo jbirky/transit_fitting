@@ -234,7 +234,53 @@ def plot_best_fit(KICID, porb, t0, sol, chi_fit, wbest, lc_raw, lc_flat, lc_fold
 
 
 class TransitModel:
-    def __init__(self, KICID,):
-       
+    def __init__(self, KICID, porb, window=None):
+        
+        self._KICID = KICID
+        self._porb = porb
+        
+        raw, flat, fold = get_data(KICID, porb)
+        self._raw = raw
+        self._flat = flat
+        self._fold = fold
+        
+        
+        self._time = fold['time'].value
+        self._flux = fold['flux'].value
+        self._flux_error = fold['flux_err'].value
+        
+        self._fit = None
+        
+        if window:
+            self._window = window
+        
+        self._tmask = None
+        self._rmask = None
+        
+    def get_table(self):
+        return self._fold
+    
+    def est_period(self):
+        return BoxLeastSquares(self._time*u.day, self._flux, dy=self._flux_error)
+    
+    def fit(self, porb_guess):
+        if porb_guess == None:
+            porb_guess = self.est_period()     
+        self._fit = fit_model(self._time, self._flux, self._flux_error, porb_guess)
+        
+    def best_fit(self):
+        return self._fit
+    
+    def apply_transit_mask(self):
+        if tmask == None:
+            tmask, rmask = apply_transit_mask(self._time, self._flux, self._fit, self._porb)
+            self._tmask = tmask
+            self._rmask = rmask
+        return self._tmask, self._rmask
+        
+    def plot(self):
+        fig, ax = plt.subplots()
+        ax.plot(self._time, self._flux)
+        plt.show()
         
     
