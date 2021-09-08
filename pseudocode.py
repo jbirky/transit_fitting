@@ -19,7 +19,7 @@ from astropy.timeseries import LombScargle
 
 class TransitModel(object):
 
-    def __init__(self, KICID, window=51):
+    def __init__(self, KICID, window=51, porb_max=None):
 
         self.KICID = KICID
         self.window = window
@@ -27,8 +27,12 @@ class TransitModel(object):
         tpf = search_targetpixelfile(KICID, cadence="long").download()
         self.lc_raw = tpf.to_lightcurve(aperture_mask=tpf.pipeline_mask)
         self.lc_flat = self.lc_raw.flatten(window_length=self.window)
+        
+        if porb_max is None:
+            porb_max = (np.max(self.lc_raw.time.value) - np.min(self.lc_raw.time.value))/2
+        self.porb_max = porb_max
 
-        self.pname = [r"$a_1$", r"$t_1$", r"$\sigma_1$", r"$a_2$", r"$t_2$", r"$\sigma_2$"]
+        self.pname = [r"$a_1$", r"$t_1$", r"$\sigma_1$", r"$a_2$", r"$t_2$", r"$\sigma_2$", r"$P_{orb}$"]
 
 
     def estimate_period(self, dur_est=None, method='bls'):
@@ -76,28 +80,35 @@ class TransitModel(object):
         return model_lc, y, s
 
 
-    def chisq(self, theta):
+    def chisq(self, theta, porb_bounds):
 
         a1, t1, d1, a2, t2, d2, porb = theta
+        
+        if (porb < porb_bounds[0]) or (porb > porb_bounds[1]):
+            return np.inf
         
         # req positive stdev
         if (d1 <= 0) or (d2 <= 0):
             return np.inf
+#         elif (d1 >= porb/2) or (d2 >= porb/2):
+#             return np.inf
         
         # req postive amplitude
         if (a1 <= 0) or (a2 <= 0):
             return np.inf
         
         # req secondary not w/in duration of primary
-        if (t2 < t1) and (t2+d2 < t1-d1):
+        if (t2 < t1) and (t2+d2 > t1-d1):
             return np.inf
-        if (t1 < t2) and (t1+d1 < t2-d2):
+        if (t1 < t2) and (t1+d1 > t2-d2):
             return np.inf
 
         # req transit fit to be between +/-porb/2
-        if (-porb/2 < t1 < porb/2) or (-porb/2 < t2 < porb/2):
+        if not (-porb/2 < t1 < porb/2):
             return np.inf
-
+        elif not  (-porb/2 < t2 < porb/2):
+            return np.inf
+        
         # chi^2 between model and data
         ypred, y, s = self.model(theta)
         chi2 = 0.5 * np.sum((y - ypred)**2/s**2)
@@ -105,7 +116,7 @@ class TransitModel(object):
         return chi2
 
 
-    def init_optimizer(self, dur_est=.1, porb_est=None):
+    def init_optimizer(self, dur_est=.05, porb_est=None):
         
         if porb_est is None:
             porb_est = estimate_period()
@@ -136,20 +147,51 @@ class TransitModel(object):
         return self.t0
 
 
-    def fit_model(self, t0=None, sol=None, method='powell'):
+    def fit_model(self, t0=None, sol=None, method='nelder-mead', porb_bounds=None):
+        
+        if porb_bounds is None:
+            porb_bounds = [0, self.porb_max]
         
         # initial guess 
         if t0 is None:
             t0 = self.t0
 
         # optimize model fit
-        res = minimize(self.chisq, t0, method=method)
+        res = minimize(self.chisq, t0, method=method, args=(porb_bounds))
+        # self.res = res
 
         self.sol = res.x
         self.chi_fit = res.fun
 
         return self.sol, self.chi_fit
+    
+    def fit_model_period(self, period_guesses=None, method='nelder-mead'):
+        
+        bls_period = self.bls_period
+        
+        if period_guesses is None:
+            period_guesses = [bls_period/2, bls_period, bls_period*2]
+        
+        solutions = []
+        chis = []
+        ts = []
+        
+        for bls_period in period_guesses:
+            
+            # initialize model solution guess
+            t0 = self.init_optimizer(dur_est=.05, porb_est=bls_period)
 
+            # optimize model fit
+            sol, chi = self.fit_model(t0=t0, method=method)
+            solutions.append(sol)
+            chis.append(chi)
+            ts.append(t0)
+
+        self.sol = solutions[np.argmin(chis)]
+        self.t0 = ts[np.argmin(chis)]
+        self.chi_fit = np.min(chis)
+        
+        return self.sol, self.chi_fit
 
     def est_duration(self, sol=None, bound=1e-3):
         """
@@ -271,9 +313,10 @@ class TransitModel(object):
 
         TO BE IMPLEMENTED
         """
-        if figsize is None:
-            figsize = (16,30)
+#         if figsize is None:
+#             figsize = (16,30)
         
-        fig, ax = plt.subplots(4, 1 , figsize=figsize)
+#         fig, ax = plt.subplots(4, 1 , figsize=figsize)
 
-        return fig
+#         return fig
+        pass
