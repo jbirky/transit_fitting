@@ -358,12 +358,15 @@ class TransitModel(object):
 
         TO BE IMPLEMENTED
         """
-        tfold = self.lc_fold.time.value
-        ffold = self.lc_fold.flux.value
+        
         t0 = self.t0
         sol = self.sol
         dur1 = self.dur1
         dur2 = self.dur2
+        
+        self.get_folded(sol[6])       
+        tfold = self.lc_fold.time.value
+        ffold = self.lc_fold.flux.value
         
         lc_init, _, _ = self.model(t0)
         lc_model, _, _ = self.model(sol)
