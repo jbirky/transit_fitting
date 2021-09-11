@@ -16,17 +16,32 @@ import lightkurve
 from lightkurve import search_targetpixelfile, search_lightcurve
 from astropy.timeseries import LombScargle 
 
+def load_masked_lc(file_name, meta=None):
+    file = np.load(file_name)
+    lc = lightkurve.LightCurve(file[0], file[1], file[2])
+    
+    if meta is None:
+        return lc
+    else:
+        lc.meta = meta
+        return lc
 
 class TransitModel(object):
 
-    def __init__(self, KICID, window=51, porb_max=None):
+    def __init__(self, KICID, window=51, porb_max=None, download_dir=None):
 
         self.KICID = KICID
         self.window = window
+        
+        if download_dir is None:
+            tpf = search_targetpixelfile(KICID, cadence="long").download()
+        else:
+            tpf = search_targetpixelfile(KICID, cadence="long").download(download_dir=download_dir)
 
-        tpf = search_targetpixelfile(KICID, cadence="long").download()
         self.lc_raw = tpf.to_lightcurve(aperture_mask=tpf.pipeline_mask)
         self.lc_flat = self.lc_raw.flatten(window_length=self.window)
+        
+        self.meta = self.lc_raw.meta
         
         if porb_max is None:
             porb_max = (np.max(self.lc_raw.time.value) - np.min(self.lc_raw.time.value))/2
@@ -56,9 +71,9 @@ class TransitModel(object):
 
     def get_folded(self, porb):
 
-        lc_fold = self.lc_flat.fold(period=porb)
+        self.lc_fold = self.lc_flat.fold(period=porb)
 
-        x, y, s = self.get_arrays(lc_fold)
+        x, y, s = self.get_arrays(self.lc_fold)
 
         return x, y, s
 
@@ -119,7 +134,7 @@ class TransitModel(object):
     def init_optimizer(self, dur_est=.05, porb_est=None):
         
         if porb_est is None:
-            porb_est = estimate_period()
+            porb_est = self.estimate_period()
  
         t0 = np.zeros(7)
 
@@ -278,7 +293,7 @@ class TransitModel(object):
         return self.tmask, self.rmask
 
 
-    def save_masked_lcs(self):
+    def save_masked_lcs(self, file_path=None):
         """
         some function which takes self.tmask and self.rmask, 
         applies them to self.lc_raw, and saves the masked arrays to 
@@ -286,7 +301,37 @@ class TransitModel(object):
 
         TO BE IMPLEMENTED
         """
-
+        
+        ID = self.KICID[4:] 
+        
+        if file_path is None:
+            file_path = './saved_lightcurves/'
+        
+        time = self.lc_raw.time.value
+        flux = self.lc_raw.flux.value
+        err = self.lc_raw.flux_err.value
+        
+        t_rmask = time[self.rmask]
+        f_rmask = flux[self.rmask]
+        e_rmask = err[self.rmask]
+        
+        t_tmask = time[self.tmask]
+        f_tmask = flux[self.tmask]
+        e_tmask = err[self.tmask]
+        
+        # Store as np arrays to save
+        self.lc_rmask_array = [t_rmask, f_rmask, e_rmask]
+        self.lc_tmask_array = [t_tmask, f_tmask, e_tmask]
+        
+        # Store as lk objects
+        self.lc_rmask = lightkurve.LightCurve(time=t_rmask, flux=f_rmask, flux_err=e_rmask)
+        self.lc_rmask.meta = self.meta
+        self.lc_tmask = lightkurve.LightCurve(time=t_tmask, flux=f_tmask, flux_err=e_tmask)
+        self.lc_tmask.meta = self.meta
+        
+        np.save(file_path + f'KIC_{ID}_rmasked', self.lc_rmask_array)
+        np.save(file_path + f'KIC_{ID}_tmasked', self.lc_tmask_array)
+    
     
     def model_fit_summary(self):
         """
@@ -313,10 +358,13 @@ class TransitModel(object):
 
         TO BE IMPLEMENTED
         """
-#         if figsize is None:
-#             figsize = (16,30)
+        if figsize is None:
+            figsize = (16,30)
         
-#         fig, ax = plt.subplots(4, 1 , figsize=figsize)
-
-#         return fig
-        pass
+        fig, ax = plt.subplots(4, 1, figsize=figsize)
+        
+        self.lc_raw.scatter(ax=ax[0], c='black')
+        self.lc_flat.scatter(ax=ax[1], c='black')
+        self.lc_fold.scatter(ax=ax[2], c='black')
+        self.lc_rmask.scatter(ax=ax[3], c='black')
+        self.lc_tmask.scatter(ax=ax[3], c='red')
