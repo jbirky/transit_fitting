@@ -365,8 +365,8 @@ class TransitModel(object):
         dur1 = self.dur1
         dur2 = self.dur2
         
-        _, y_init, _ = self.model(t0)
-        _, y_model, _ = self.model(sol)
+        lc_init, _, _ = self.model(t0)
+        lc_model, _, _ = self.model(sol)
         
         if figsize is None:
             figsize = (16,30)
@@ -382,13 +382,13 @@ class TransitModel(object):
         label += r"$\chi^2=%s$"%(int(np.round(self.chi_fit)))
         
         ax[2].scatter(tfold, ffold, color='k', s=3)
-        ax[2].plot(tfold, y_init, color='b')
-        ax[2].plot(tfold, y_model, color='r', label=label)
-        ax[2].axvline(sol[1], linestyle='--')
-        ax[2].axvline(sol[4], linestyle='--')
-        ax[2].axvspan(sol[1]-dur1/2, sol[1]+dur1/2, alpha=.1)
-        ax[2].axvspan(sol[4]-dur2/2, sol[4]+dur2/2, alpha=.1)
-        ax[2].set_xlim(min(tfold), max(tfold))
+        ax[2].plot(tfold, lc_init, color='b')
+        ax[2].plot(tfold, lc_model, color='r', label=label)
+#         ax[2].axvline(sol[1], linestyle='--')
+#         ax[2].axvline(sol[4], linestyle='--')
+#         ax[2].axvspan(sol[1]-dur1/2, sol[1]+dur1/2, alpha=.1)
+#         ax[2].axvspan(sol[4]-dur2/2, sol[4]+dur2/2, alpha=.1)
+#         ax[2].set_xlim(min(tfold), max(tfold))
         ax[2].legend(loc='best', fontsize=22, frameon=False)
         
         self.lc_rmask.scatter(ax=ax[3], c='black')
