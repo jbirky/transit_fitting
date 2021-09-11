@@ -128,8 +128,6 @@ class TransitModel(object):
         ypred, y, s = self.model(theta)
         chi2 = 0.5 * np.sum((y - ypred)**2/s**2)
         
-        self.chi2 = chi2
-        
         return chi2
 
 
@@ -381,7 +379,7 @@ class TransitModel(object):
         label = ''
         for ii in range(len(self.pname)):
             label += f"{self.pname[ii]}={np.round(sol[ii],3)}\n"
-        label += r"$\chi^2=%s$"%(int(np.round(self.chi2)))
+        label += r"$\chi^2=%s$"%(int(np.round(self.chi_fit)))
         
         ax[2].scatter(tfold, ffold, color='k', s=3)
         ax[2].plot(tfold, y_init, color='b')
