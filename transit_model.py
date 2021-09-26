@@ -190,7 +190,7 @@ class TransitModel(object):
         bls_period = self.bls_period
         
         if period_guesses is None:
-            period_guesses = [bls_period/2, bls_period, bls_period*2]
+            period_guesses = [bls_period/4, bls_period/2, bls_period, bls_period*2]
         
         solutions = []
         chis = []
@@ -206,6 +206,48 @@ class TransitModel(object):
             solutions.append(sol)
             chis.append(chi)
             ts.append(t0)
+            
+        self.chis = chis
+        self.sols = solutions
+        self.ts = ts
+        
+        self.sol = solutions[np.argmin(chis)]
+        self.t0 = ts[np.argmin(chis)]
+        self.chi_fit = np.min(chis)
+        
+        return self.sol, self.chi_fit
+    
+    def fit_model_window(self, period_guesses=None, windows=None, method='nelder-mead', dur_est=0.05):
+        
+        if windows is None:
+            windows = [21, 51, 81]
+        
+        solutions = []
+        chis = []
+        ts = []
+        
+        for window in windows:
+            
+            self.window = window
+            self.lc_flat = self.lc_raw.flatten(window_length=self.window)
+            self.init_optimizer()
+            self.fit_model()
+            
+            bls_period = self.bls_period
+        
+            if period_guesses is None:
+                period_guesses = [bls_period/4, bls_period/2, bls_period, bls_period*2]
+            
+            for bls_period in period_guesses:
+
+                # initialize model solution guess
+                t0 = self.init_optimizer(dur_est=dur_est, porb_est=bls_period)
+
+                # optimize model fit
+                sol, chi = self.fit_model(t0=t0, method=method)
+                solutions.append(sol)
+                chis.append(chi)
+                ts.append(t0)
             
         self.chis = chis
         self.sols = solutions
