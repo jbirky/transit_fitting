@@ -225,11 +225,10 @@ class TransitModel(object):
         solutions = []
         chis = []
         ts = []
+        window_guesses = []
         
-        for window in windows:
-            
-            self.window = window
-            self.lc_flat = self.lc_raw.flatten(window_length=self.window)
+        for window in windows:      
+            self.lc_flat = self.lc_raw.flatten(window_length=window)
             self.init_optimizer()
             self.fit_model()
             
@@ -239,7 +238,10 @@ class TransitModel(object):
                 period_guesses = [bls_period/4, bls_period/2, bls_period, bls_period*2]
             
             for bls_period in period_guesses:
-
+                
+                # Need list of window values corresponding to each chi2 value
+                window_guesses.append(window)
+                
                 # initialize model solution guess
                 t0 = self.init_optimizer(dur_est=dur_est, porb_est=bls_period)
 
@@ -248,7 +250,10 @@ class TransitModel(object):
                 solutions.append(sol)
                 chis.append(chi)
                 ts.append(t0)
-            
+                
+        self.window = window_guesses[np.argmin(chis)]
+        self.lc_flat = self.lc_raw.flatten(window_length=self.window)
+        
         self.chis = chis
         self.sols = solutions
         self.ts = ts
