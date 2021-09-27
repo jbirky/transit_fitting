@@ -252,6 +252,8 @@ class TransitModel(object):
                 ts.append(t0)
                 
         self.window = window_guesses[np.argmin(chis)]
+        
+        # Fold lightcurve again with best value for plotting function
         self.lc_flat = self.lc_raw.flatten(window_length=self.window)
         
         self.chis = chis
@@ -408,11 +410,11 @@ class TransitModel(object):
         return summary
 
 
-    def plot_best_fit(self, figsize=None, t0=None, sol=None):
+    def plot_best_fit(self, figsize=None, t0=None, sol=None, show=True, save_dir=None):
         """
         4-panel plot with raw lightcurve, flattened lc, model fit, and masked lc
 
-        TO BE IMPLEMENTED
+        If a save directory is provided, saves figure as "/<save_dir>/KICID.png"
         """
         
         if t0 is None:
@@ -454,3 +456,11 @@ class TransitModel(object):
         
         self.lc_rmask.scatter(ax=ax[3], c='black')
         self.lc_tmask.scatter(ax=ax[3], c='red')
+        
+        if save_dir is not None:
+            plt.savefig(save_dir + f'KIC_{self.KICID}.png')
+        
+        if show:
+            plt.show()
+        else:
+            plt.close()
