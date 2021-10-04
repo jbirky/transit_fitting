@@ -4,10 +4,11 @@ from scipy.optimize import minimize
 from scipy.stats import norm
 import warnings
 import matplotlib.pyplot as plt
-# from matplotlib import rc
-# rc('text', usetex=True)
-# rc('xtick', labelsize=20)
-# rc('ytick', labelsize=20)
+import os
+from matplotlib import rc
+rc('text', usetex=True)
+rc('xtick', labelsize=20)
+rc('ytick', labelsize=20)
 
 import astropy.units as u
 from astropy.timeseries import BoxLeastSquares
@@ -178,7 +179,7 @@ class TransitModel(object):
 
         # optimize model fit
         res = minimize(self.chisq, t0, method=method, args=(porb_bounds))
-        # self.res = res
+        self.res = res
 
         self.sol = res.x
         self.chi_fit = res.fun
@@ -365,6 +366,9 @@ class TransitModel(object):
         if file_path is None:
             file_path = './saved_lightcurves/'
         
+        if not os.path.exists(file_path):
+            os.makedirs(file_path)
+        
         time = self.lc_raw.time.value
         flux = self.lc_raw.flux.value
         err = self.lc_raw.flux_err.value
@@ -458,7 +462,9 @@ class TransitModel(object):
         self.lc_tmask.scatter(ax=ax[3], c='red')
         
         if save_dir is not None:
-            plt.savefig(save_dir + f'KIC_{self.KICID}.png')
+            if not os.path.exists(save_dir):
+                os.makedirs(save_dir)
+            plt.savefig(save_dir + f'KIC_{self.KICID[4:]}.png')
         
         if show:
             plt.show()
