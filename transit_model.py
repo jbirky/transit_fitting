@@ -15,7 +15,10 @@ from astropy.timeseries import BoxLeastSquares
 
 import lightkurve
 from lightkurve import search_targetpixelfile, search_lightcurve
-from astropy.timeseries import LombScargle 
+from astropy.timeseries import LombScargle
+
+import exoplanet
+from scipy.signal import find_peaks
 
 def load_masked_lc(file_name, meta=None):
     file = np.load(file_name)
@@ -29,25 +32,42 @@ def load_masked_lc(file_name, meta=None):
 
 class TransitModel(object):
 
-    def __init__(self, KICID, window=51, porb_max=None, download_dir=None):
+    def __init__(self, KICID, window=51, porb_max=None, download_dir=None, download_all=False, cadence="long"):
 
         self.KICID = KICID
         self.window = window
         
-        if download_dir is None:
-            tpf = search_targetpixelfile(KICID, cadence="long").download()
+        self.download_all = download_all
+        self.download_dir = download_dir
+        
+        if self.download_all:
+            if self.download_dir is None:
+                lc = search_lightcurve(KICID, cadence=cadence).download_all()
+            else:
+                lc = search_lightcurve(KICID, cadence=cadence).download_all(download_dir=download_dir)
+            self.lc_raw = lc.stitch()
+            self.lc_flat = self.lc_raw.flatten(window_length=self.window)
+        
         else:
-            tpf = search_targetpixelfile(KICID, cadence="long").download(download_dir=download_dir)
-
-        self.lc_raw = tpf.to_lightcurve(aperture_mask=tpf.pipeline_mask)
-        self.lc_flat = self.lc_raw.flatten(window_length=self.window)
+            if self.download_dir is None:
+                tpf = search_targetpixelfile(KICID, cadence=cadence).download()
+            else:
+                tpf = search_targetpixelfile(KICID, cadence=cadence).download(download_dir=download_dir)
+            self.lc_raw = tpf.to_lightcurve(aperture_mask=tpf.pipeline_mask)
+            self.lc_flat = self.lc_raw.flatten(window_length=self.window)
         
         self.meta = self.lc_raw.meta
         
         if porb_max is None:
             porb_max = (np.max(self.lc_raw.time.value) - np.min(self.lc_raw.time.value))/2
         self.porb_max = porb_max
-
+        
+        self.bls_period = None
+        self.prot = None
+        
+        self.lc_tmask = None
+        self.lc_rmask = None
+        
         self.pname = [r"$a_1$", r"$t_1$", r"$\sigma_1$", r"$a_2$", r"$t_2$", r"$\sigma_2$", r"$P_{orb}$"]
 
 
@@ -170,6 +190,9 @@ class TransitModel(object):
 
     def fit_model(self, t0=None, sol=None, method='nelder-mead', porb_bounds=None):
         
+        if self.bls_period is None:
+            self.init_optimizer()
+            
         if porb_bounds is None:
             porb_bounds = [0, self.porb_max]
         
@@ -188,6 +211,9 @@ class TransitModel(object):
     
     def fit_model_period(self, period_guesses=None, method='nelder-mead', dur_est=0.05):
         
+        if self.bls_period is None:
+            self.init_optimizer()
+            
         bls_period = self.bls_period
         
         if period_guesses is None:
@@ -219,6 +245,9 @@ class TransitModel(object):
         return self.sol, self.chi_fit
     
     def fit_model_window(self, period_guesses=None, windows=None, method='nelder-mead', dur_est=0.05):
+        
+        if self.bls_period is None:
+            self.init_optimizer()
         
         if windows is None:
             windows = [21, 51, 81]
@@ -270,10 +299,9 @@ class TransitModel(object):
     def est_duration(self, sol=None, bound=1e-3):
         """
         returns duration estimate, given a solution array (a1, t1, d1, a2, t2, d2, porb)
-
-        TO BE IMPLEMENTED
         """
 
+        
         if sol is None:
             sol = self.sol
             
@@ -393,7 +421,38 @@ class TransitModel(object):
         
         np.save(file_path + f'KIC_{ID}_rmasked', self.lc_rmask_array)
         np.save(file_path + f'KIC_{ID}_tmasked', self.lc_tmask_array)
-    
+
+        
+    def fit_rotation(self, time=None, flux=None, yerr=None, min_period=0.1, max_period=None, oversample=2.0, smooth=2.0, max_peaks=10, prominence=0.1):
+        
+        if time is None:
+            time = self.lc_rmask.time
+        if flux is None:
+            flux = self.lc_rmask.flux
+        
+        try:
+            x = time.value
+            y = flux
+            x_new = x[np.isfinite(x) & np.isfinite(y)]
+            y_new = y[np.isfinite(x) & np.isfinite(y)]
+
+            autocorr = exoplanet.autocorr_estimator(x_new, y_new, yerr=yerr, min_period=min_period, max_period=max_period, oversample=oversample, smooth=smooth, max_peaks=max_peaks)
+            lag, acf = autocorr['autocorr']
+            peaks, prominence = find_peaks(acf, prominence=prominence)
+            peaks, prominence
+
+            p = np.argsort(lag[peaks])
+            new_array = lag[peaks][p]
+
+            if (prominence['prominences'][p][1] > prominence['prominences'][p][0]):
+                high_peak = lag[peaks][p][1]
+            else:
+                high_peak = lag[peaks][p][0]
+
+            self.prot = high_peak
+        
+        except:
+            return -1
     
     def model_fit_summary(self):
         """
@@ -406,13 +465,15 @@ class TransitModel(object):
                    "dur2": self.dur2, 
                    "ecosw": self.ecosw,
                    "esinw": self.esinw,
-                   "ecc": self.ecc}
+                   "ecc": self.ecc,
+                   "$P_{rot}$": self.prot}
 
         for ii, param in enumerate(self.pname):
             summary[param] = self.sol[ii] 
 
         return summary
-
+    
+    
 
     def plot_best_fit(self, figsize=None, t0=None, sol=None, show=True, save_dir=None):
         """
@@ -438,7 +499,12 @@ class TransitModel(object):
         if figsize is None:
             figsize = (16,30)
         
-        fig, ax = plt.subplots(4, 1, figsize=figsize)
+        # Add an extra plot if the rotation period has been found
+        plot_number = 4
+        if self.prot is not None:
+            plot_number = 5
+            
+        fig, ax = plt.subplots(plot_number, 1, figsize=figsize)
         
         self.lc_raw.scatter(ax=ax[0], c='black')
         self.lc_flat.scatter(ax=ax[1], c='black')
@@ -460,6 +526,9 @@ class TransitModel(object):
         
         self.lc_rmask.scatter(ax=ax[3], c='black')
         self.lc_tmask.scatter(ax=ax[3], c='red')
+        
+        if self.prot is not None:
+            ax[4].scatter(self.lc_rmask.time.value%self.prot, self.lc_rmask.flux, s=1, c='k')
         
         if save_dir is not None:
             if not os.path.exists(save_dir):
