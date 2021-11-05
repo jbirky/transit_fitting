@@ -5,16 +5,17 @@ from scipy.stats import norm
 import warnings
 import matplotlib.pyplot as plt
 import os
-from matplotlib import rc
-rc('text', usetex=True)
-rc('xtick', labelsize=20)
-rc('ytick', labelsize=20)
+# from matplotlib import rc
+# rc('text', usetex=True)
+# rc('xtick', labelsize=20)
+# rc('ytick', labelsize=20)
 
 import astropy.units as u
 from astropy.timeseries import BoxLeastSquares
 
 import lightkurve
 from lightkurve import search_targetpixelfile, search_lightcurve
+import astropy
 from astropy.timeseries import LombScargle
 
 import exoplanet
@@ -210,6 +211,9 @@ class TransitModel(object):
         return self.sol, self.chi_fit
     
     def fit_model_period(self, period_guesses=None, method='nelder-mead', dur_est=0.05):
+        """
+        Fits transits over a range of periods
+        """
         
         if self.bls_period is None:
             self.init_optimizer()
@@ -245,6 +249,9 @@ class TransitModel(object):
         return self.sol, self.chi_fit
     
     def fit_model_window(self, period_guesses=None, windows=None, method='nelder-mead', dur_est=0.05):
+        """
+        Fits transits over both a range of periods and a range of (flattening) window paramters
+        """
         
         if self.bls_period is None:
             self.init_optimizer()
@@ -325,8 +332,6 @@ class TransitModel(object):
     def est_eccentricity(self, sol=None):
         """
         returns eccentricity estimate, given a solution array (a1, t1, d1, a2, t2, d2, porb)
-
-        TO BE IMPLEMENTED
         """
         
         if sol is None:
@@ -356,8 +361,6 @@ class TransitModel(object):
     def apply_transit_mask(self, sol=None):
         """
         returns transit and rotation masks, given a solution array (a1, t1, d1, a2, t2, d2, porb)
-
-        TO BE IMPLEMENTED
         """
         if sol is None:
             sol = self.sol
@@ -380,13 +383,11 @@ class TransitModel(object):
         return self.tmask, self.rmask
 
 
-    def save_masked_lcs(self, file_path=None):
+    def save_masked_lcs(self, file_path=None, sigma_clip=3):
         """
         some function which takes self.tmask and self.rmask, 
         applies them to self.lc_raw, and saves the masked arrays to 
         a numpy file
-
-        TO BE IMPLEMENTED
         """
         
         ID = self.KICID[4:] 
@@ -415,8 +416,10 @@ class TransitModel(object):
         
         # Store as lk objects
         self.lc_rmask = lightkurve.LightCurve(time=t_rmask, flux=f_rmask, flux_err=e_rmask)
+        self.lc_rmask = self.lc_rmask.remove_outliers(sigma=sigma_clip)
         self.lc_rmask.meta = self.meta
         self.lc_tmask = lightkurve.LightCurve(time=t_tmask, flux=f_tmask, flux_err=e_tmask)
+        self.lc_tmask = self.lc_tmask.remove_outliers(sigma=sigma_clip)
         self.lc_tmask.meta = self.meta
         
         np.save(file_path + f'KIC_{ID}_rmasked', self.lc_rmask_array)
@@ -425,10 +428,15 @@ class TransitModel(object):
         
     def fit_rotation(self, time=None, flux=None, yerr=None, min_period=0.1, max_period=None, oversample=2.0, smooth=2.0, max_peaks=10, prominence=0.1):
         
+        rmask = self.lc_rmask
+        
+        
         if time is None:
-            time = self.lc_rmask.time
+            time = rmask.time
+            
         if flux is None:
-            flux = self.lc_rmask.flux
+            flux = rmask.flux
+            
         
         try:
             x = time.value
