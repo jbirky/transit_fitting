@@ -5,10 +5,6 @@ from scipy.stats import norm
 import warnings
 import matplotlib.pyplot as plt
 import os
-from matplotlib import rc
-rc('text', usetex=True)
-rc('xtick', labelsize=20)
-rc('ytick', labelsize=20)
 
 import astropy.units as u
 from astropy.timeseries import BoxLeastSquares
