@@ -65,6 +65,13 @@ class TransitModel(object):
         self.lc_tmask = None
         self.lc_rmask = None
         
+        self.dur1 = None
+        self.dur2 = None
+        
+        self.ecosw = None
+        self.esinw = None
+        self.ecc = None
+        
         self.pname = [r"$a_1$", r"$t_1$", r"$\sigma_1$", r"$a_2$", r"$t_2$", r"$\sigma_2$", r"$P_{orb}$"]
 
 
@@ -332,6 +339,9 @@ class TransitModel(object):
         
         if sol is None:
             sol = self.sol
+            
+        if (self.dur1 is None) or (self.dur2 is None):
+            self.est_duration()
         
         t1 = sol[1]
         t2 = sol[4]
@@ -354,7 +364,7 @@ class TransitModel(object):
         return self.ecc
 
 
-    def apply_transit_mask(self, sol=None):
+    def apply_transit_mask(self, sol=None, sigma_clip=3):
         """
         returns transit and rotation masks, given a solution array (a1, t1, d1, a2, t2, d2, porb)
         """
@@ -375,24 +385,6 @@ class TransitModel(object):
 
         self.tmask = tmask
         self.rmask = rmask
-    
-        return self.tmask, self.rmask
-
-
-    def save_masked_lcs(self, file_path=None, sigma_clip=3):
-        """
-        some function which takes self.tmask and self.rmask, 
-        applies them to self.lc_raw, and saves the masked arrays to 
-        a numpy file
-        """
-        
-        ID = self.KICID[4:] 
-        
-        if file_path is None:
-            file_path = './saved_lightcurves/'
-        
-        if not os.path.exists(file_path):
-            os.makedirs(file_path)
         
         time = self.lc_raw.time.value
         flux = self.lc_raw.flux.value
@@ -417,6 +409,24 @@ class TransitModel(object):
         self.lc_tmask = lightkurve.LightCurve(time=t_tmask, flux=f_tmask, flux_err=e_tmask)
         self.lc_tmask = self.lc_tmask.remove_outliers(sigma=sigma_clip)
         self.lc_tmask.meta = self.meta
+    
+        return self.tmask, self.rmask
+
+
+    def save_masked_lcs(self, file_path=None):
+        """
+        some function which takes self.tmask and self.rmask, 
+        applies them to self.lc_raw, and saves the masked arrays to 
+        a numpy file
+        """
+        
+        ID = self.KICID[4:] 
+        
+        if file_path is None:
+            file_path = './saved_lightcurves/'
+        
+        if not os.path.exists(file_path):
+            os.makedirs(file_path)
         
         np.save(file_path + f'KIC_{ID}_rmasked', self.lc_rmask_array)
         np.save(file_path + f'KIC_{ID}_tmasked', self.lc_tmask_array)
