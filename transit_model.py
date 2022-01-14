@@ -527,10 +527,11 @@ class TransitModel(object):
         for ii in range(len(self.pname)):
             label += f"{self.pname[ii]}={np.round(sol[ii],3)}\n"
         
-        try:
-            label += r"$\chi^2=%s$"%(int(np.round(self.chi_fit)))
-        except ValueError:
+        if np.isnan(self.chi_fit):
             label += r"$\chi^2=0$"
+        else:
+            label += r"$\chi^2=%s$"%(int(np.round(self.chi_fit)))
+
         
         ax[2].scatter(tfold, ffold, color='k', s=3)
         ax[2].plot(tfold, lc_init, color='b')
