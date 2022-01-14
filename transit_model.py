@@ -26,7 +26,7 @@ def load_masked_lc(file_name, meta=None):
     else:
         lc.meta = meta
         return lc
-
+    
 class TransitModel(object):
 
     def __init__(self, KICID, window=51, porb_max=None, download_dir=None, download_all=False, cadence="long"):
@@ -526,7 +526,11 @@ class TransitModel(object):
         label = ''
         for ii in range(len(self.pname)):
             label += f"{self.pname[ii]}={np.round(sol[ii],3)}\n"
-        label += r"$\chi^2=%s$"%(int(np.round(self.chi_fit)))
+        
+        try:
+            label += r"$\chi^2=%s$"%(int(np.round(self.chi_fit)))
+        except ValueError:
+            label += r"$\chi^2=0$"
         
         ax[2].scatter(tfold, ffold, color='k', s=3)
         ax[2].plot(tfold, lc_init, color='b')
