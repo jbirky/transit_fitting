@@ -1,3 +1,4 @@
+import sys
 import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
@@ -29,29 +30,63 @@ def load_masked_lc(file_name, meta=None):
 
 class TransitModel(object):
 
-    def __init__(self, KICID, window=51, porb_max=None, download_dir=None, download_all=False, cadence="long"):
+    def __init__(self, 
+                 KICID, window=51, 
+                 porb_max=None, 
+                 download_dir=None,
+                 download_all=False, # Deprecated: redundant with quarters argument
+                 quarters=None, 
+                 cadence="long", 
+                 fill_gaps=False):
+        """
+        Download all quarters if quarter == 'all', first n integers if quaters is an int, specific quarters if quarters is a list of ints,
+        or first quarter if None.
+        """
 
         self.KICID = KICID
         self.window = window
         
-        self.download_all = download_all
         self.download_dir = download_dir
+        self.quarters = quarters
+        self.fill_gaps = fill_gaps
         
-        if self.download_all:
-            if self.download_dir is None:
-                lc = search_lightcurve(KICID, cadence=cadence).download_all()
+        
+        if download_all:
+            self.quarters = 'all'
+        
+        if type(self.quarters) == str:
+            if self.quarters.lower() == 'all':
+                lc = search_lightcurve(KICID, cadence=cadence).download_all(download_dir=self.download_dir)
+                self.lc_raw = lc.stitch()
+                self.lc_flat = self.lc_raw.flatten(window_length=self.window)
             else:
-                lc = search_lightcurve(KICID, cadence=cadence).download_all(download_dir=download_dir)
+                print('Invalid string for quarters argument')
+            
+        elif type(self.quarters) == int:
+            quarter_list = []
+            search = search_lightcurve(KICID)
+            for i in range(self.quarters):
+                quarter_list.append(int(search.mission[i][-2:]))
+            lc = search_lightcurve(KICID, cadence=cadence, quarter=quarter_list).download_all(download_dir=self.download_dir)
             self.lc_raw = lc.stitch()
             self.lc_flat = self.lc_raw.flatten(window_length=self.window)
         
-        else:
-            if self.download_dir is None:
-                tpf = search_targetpixelfile(KICID, cadence=cadence).download()
-            else:
-                tpf = search_targetpixelfile(KICID, cadence=cadence).download(download_dir=download_dir)
+        elif type(self.quarters) == list:
+            lc = search_lightcurve(KICID, cadence=cadence, quarter=self.quarters).download_all(download_dir=self.download_dir)
+            self.lc_raw = lc.stitch()
+            self.lc_flat = self.lc_raw.flatten(window_length=self.window)
+            
+        elif self.quarters is None:
+            tpf = search_targetpixelfile(KICID, cadence=cadence).download(download_dir=self.download_dir)
             self.lc_raw = tpf.to_lightcurve(aperture_mask=tpf.pipeline_mask)
             self.lc_flat = self.lc_raw.flatten(window_length=self.window)
+            
+        else:
+            print('Invalid quarters argument')
+            sys.exit() # I guess this isn't the right way to kill the program? I'll figure out later
+        
+        if self.fill_gaps:
+            self.lc_flat = self.lc_flat.fill_gaps()
         
         self.meta = self.lc_raw.meta
         
@@ -364,7 +399,7 @@ class TransitModel(object):
         return self.ecc
 
 
-    def apply_transit_mask(self, sol=None, sigma_clip=3):
+    def apply_transit_mask(self, sol=None, sigma_clip=3, remove_outliers=True):
         """
         returns transit and rotation masks, given a solution array (a1, t1, d1, a2, t2, d2, porb)
         """
@@ -404,10 +439,13 @@ class TransitModel(object):
         
         # Store as lk objects
         self.lc_rmask = lightkurve.LightCurve(time=t_rmask, flux=f_rmask, flux_err=e_rmask)
-        self.lc_rmask = self.lc_rmask.remove_outliers(sigma=sigma_clip)
-        self.lc_rmask.meta = self.meta
         self.lc_tmask = lightkurve.LightCurve(time=t_tmask, flux=f_tmask, flux_err=e_tmask)
-        self.lc_tmask = self.lc_tmask.remove_outliers(sigma=sigma_clip)
+        
+        if remove_outliers:
+            self.lc_rmask = self.lc_rmask.remove_outliers(sigma=sigma_clip)
+            self.lc_tmask = self.lc_tmask.remove_outliers(sigma=sigma_clip)
+        
+        self.lc_rmask.meta = self.meta
         self.lc_tmask.meta = self.meta
     
         return self.tmask, self.rmask
@@ -432,7 +470,7 @@ class TransitModel(object):
         np.save(file_path + f'KIC_{ID}_tmasked', self.lc_tmask_array)
 
         
-    def fit_rotation(self, time=None, flux=None, yerr=None, min_period=0.1, max_period=None, oversample=2.0, smooth=2.0, max_peaks=10, prominence=0.1):
+    def fit_rotation(self, time=None, flux=None, yerr=None, min_period=0.1, max_period=None, oversample=2.0, smooth=0.5, max_peaks=10, prominence=0.01):
         
         rmask = self.lc_rmask
         
@@ -526,8 +564,11 @@ class TransitModel(object):
         label = ''
         for ii in range(len(self.pname)):
             label += f"{self.pname[ii]}={np.round(sol[ii],3)}\n"
-        label += r"$\chi^2=%s$"%(int(np.round(self.chi_fit)))
-        
+        try:    
+            label += r"$\chi^2=%s$"%(int(np.round(self.chi_fit)))
+        except:
+            label += r"$\chi^2=inf$"
+            
         ax[2].scatter(tfold, ffold, color='k', s=3)
         ax[2].plot(tfold, lc_init, color='b')
         ax[2].plot(tfold, lc_model, color='r', label=label)
