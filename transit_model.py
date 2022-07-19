@@ -30,20 +30,41 @@ def load_masked_lc(file_name, meta=None):
 
 class TransitModel(object):
 
-    def __init__(self, 
-                 KICID, window=51, 
+    def __init__(self,
+                 ID,
+                 mission = None,
+                 pipeline = None,
+                 window=51, 
                  porb_max=None, 
                  download_dir=None,
-                 download_all=False, # Deprecated: redundant with quarters argument
+                 download_all=False,
                  quarters=None, 
                  cadence="long", 
                  fill_gaps=False):
+        """     
+        ID: Target identification number
+        mission: Prefix of ID. 'KIC' for Kepler or 'TIC' for TESS. None if included in ID
+        pipeline: TESS pipeline to download. Defaults to first found if None given.
+        window: Window parameter for flattening function
+        porb_max: Maximum orbital period for search range.
+        download_dir: Location to download lightcurve data.
+        download_all: If True, downloads all quarters.
+        quarters: Download all quarters if quarter == 'all', first n integers if quaters is an int, specific quarters if quarters is a list of ints, or first quarter if None. Overrides download_all.
         """
-        Download all quarters if quarter == 'all', first n integers if quaters is an int, specific quarters if quarters is a list of ints,
-        or first quarter if None.
-        """
-
-        self.KICID = KICID
+        
+        # Ensure proper formatting of ID
+        ID = str(ID)
+        if (mission == 'Kepler') or (mission == 'K2'):
+            mission = 'KIC'
+            
+        if mission == None:
+            self.ID = ID
+            self.mission = ID[:3]
+        else:
+            self.ID = mission + ID
+            self.mission = mission
+            
+        self.pipeline = pipeline
         self.window = window
         
         self.download_dir = download_dir
@@ -53,32 +74,36 @@ class TransitModel(object):
         
         if download_all:
             self.quarters = 'all'
+            
+        if (pipeline==None) and (mission=='TESS'):
+            search = search_lightcurve(ID)
+            self.pipeline = search.author[0]
+            
         
         if type(self.quarters) == str:
             if self.quarters.lower() == 'all':
-                lc = search_lightcurve(KICID, cadence=cadence).download_all(download_dir=self.download_dir)
-                self.lc_raw = lc.stitch()
+                self.lc_collection = search_lightcurve(ID, cadence=cadence).download_all(download_dir=self.download_dir, author=pipeline)
+                self.lc_raw = self.stitch()
                 self.lc_flat = self.lc_raw.flatten(window_length=self.window)
             else:
                 print('Invalid string for quarters argument')
             
         elif type(self.quarters) == int:
             quarter_list = []
-            search = search_lightcurve(KICID)
+            search = search_lightcurve(ID)
             for i in range(self.quarters):
                 quarter_list.append(int(search.mission[i][-2:]))
-            lc = search_lightcurve(KICID, cadence=cadence, quarter=quarter_list).download_all(download_dir=self.download_dir)
-            self.lc_raw = lc.stitch()
+            self.lc_collection = search_lightcurve(ID, cadence=cadence, quarter=quarter_list).download_all(download_dir=self.download_dir, author=pipeline)
+            self.lc_raw = self.stitch()
             self.lc_flat = self.lc_raw.flatten(window_length=self.window)
         
         elif type(self.quarters) == list:
-            lc = search_lightcurve(KICID, cadence=cadence, quarter=self.quarters).download_all(download_dir=self.download_dir)
-            self.lc_raw = lc.stitch()
+            self.lc_collection = search_lightcurve(ID, cadence=cadence, quarter=self.quarters).download_all(download_dir=self.download_dir, author=pipeline)
+            self.lc_raw = self.stitch()
             self.lc_flat = self.lc_raw.flatten(window_length=self.window)
             
         elif self.quarters is None:
-            tpf = search_targetpixelfile(KICID, cadence=cadence).download(download_dir=self.download_dir)
-            self.lc_raw = tpf.to_lightcurve(aperture_mask=tpf.pipeline_mask)
+            self.lc_raw = search_lightcurve(ID, cadence=cadence).download(download_dir=self.download_dir)
             self.lc_flat = self.lc_raw.flatten(window_length=self.window)
             
         else:
@@ -108,9 +133,32 @@ class TransitModel(object):
         self.ecc = None
         
         self.pname = [r"$a_1$", r"$t_1$", r"$\sigma_1$", r"$a_2$", r"$t_2$", r"$\sigma_2$", r"$P_{orb}$"]
+        
+    def stitch(self, lc_collection=None):
+        """
+        Stitches together lightcurve collection into single lightcurve. Gives modulo of time to handle inconsistent BJD time in TESS lightcurves.
+        """
+        if lc_collection == None:
+            lc_collection = self.lc
+            
+        flux = []
+        time = []
+        flux_error = []
+        
+        for lc in lc_collection:
+            [flux.append(f/np.nanmean(lc.flux.value.tolist())) for f in lc.flux.value.tolist()]
+            [time.append(t%2457000) for t in lc.time.value.tolist()]
+            [flux_error.append(fe) for fe in lc.flux_err.value.tolist()]
+
+        res = lk.LightCurve(time=time, flux=flux, flux_err=flux_error)
+        self.lc = res
+        return res
 
 
     def estimate_period(self, dur_est=None, method='bls'):
+        """
+        Estimates period as a starting point for searching for orbital period.
+        """
         if dur_est is None:
             dur_est = 1
         bls = BoxLeastSquares(self.lc_flat.time, self.lc_flat.flux, dy=self.lc_flat.flux_err)
@@ -126,7 +174,9 @@ class TransitModel(object):
 
 
     def get_arrays(self, lc):
-    
+        """
+        Returns lightcurve data as separate arrays.
+        """
         x = lc.time.value
         y = lc.flux.value
         s = lc.flux_err.value
@@ -135,7 +185,9 @@ class TransitModel(object):
 
 
     def get_folded(self, porb):
-
+        """
+        Returns folded lightcurve arrays.
+        """
         self.lc_fold = self.lc_flat.fold(period=porb)
 
         x, y, s = self.get_arrays(self.lc_fold)
@@ -144,6 +196,9 @@ class TransitModel(object):
 
 
     def model(self, theta):
+        """
+        Model of eclipsing binary lightcurves.
+        """
         
         a1, t1, d1, a2, t2, d2, porb = theta
 
@@ -161,7 +216,9 @@ class TransitModel(object):
 
 
     def chisq(self, theta, porb_bounds):
-
+        """
+        Calculates chi-squard of model fit.
+        """
         a1, t1, d1, a2, t2, d2, porb = theta
         
         if (porb < porb_bounds[0]) or (porb > porb_bounds[1]):
@@ -197,7 +254,6 @@ class TransitModel(object):
 
 
     def init_optimizer(self, dur_est=.02, porb_est=None):
-        
         if porb_est is None:
             porb_est = self.estimate_period()
  
@@ -458,7 +514,7 @@ class TransitModel(object):
         a numpy file
         """
         
-        ID = self.KICID[4:] 
+        ID = self.ID[4:] 
         
         if file_path is None:
             file_path = './saved_lightcurves/'
@@ -511,7 +567,7 @@ class TransitModel(object):
         returns a dictionary of all the measured parameters
         """
 
-        summary = {"KICID": self.KICID,
+        summary = {"ID": self.ID,
                    "window": self.window,
                    "dur1": self.dur1,
                    "dur2": self.dur2, 
@@ -531,7 +587,7 @@ class TransitModel(object):
         """
         4-panel plot with raw lightcurve, flattened lc, model fit, and masked lc
 
-        If a save directory is provided, saves figure as "/<save_dir>/KICID.png"
+        If a save directory is provided, saves figure as "/<save_dir>/ID.png"
         """
         
         if t0 is None:
@@ -588,7 +644,7 @@ class TransitModel(object):
         if save_dir is not None:
             if not os.path.exists(save_dir):
                 os.makedirs(save_dir)
-            plt.savefig(save_dir + f'KIC_{self.KICID[4:]}.png')
+            plt.savefig(save_dir + f'{self.ID}.png')
         
         if show:
             plt.show()
