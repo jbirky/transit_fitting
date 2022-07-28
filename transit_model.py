@@ -71,18 +71,24 @@ class TransitModel(object):
         self.quarters = quarters
         self.fill_gaps = fill_gaps
         
+        self.cadence = cadence
+        
         
         if download_all:
             self.quarters = 'all'
             
-        if (pipeline==None) and (mission=='TESS'):
-            search = search_lightcurve(ID)
+        if (self.pipeline==None) and (self.mission=='TESS'):
+            search = search_lightcurve(self.ID)
             self.pipeline = search.author[0]
+            
+        self.time_column = None
+        if self.mission == 'TESS':
+            self.time_column = 'time'
             
         
         if type(self.quarters) == str:
             if self.quarters.lower() == 'all':
-                self.lc_collection = search_lightcurve(ID, cadence=cadence).download_all(download_dir=self.download_dir, author=pipeline)
+                self.lc_collection = search_lightcurve(self.ID, cadence=self.cadence, author=self.pipeline).download_all(download_dir=self.download_dir)
                 self.lc_raw = self.stitch()
                 self.lc_flat = self.lc_raw.flatten(window_length=self.window)
             else:
@@ -90,20 +96,20 @@ class TransitModel(object):
             
         elif type(self.quarters) == int:
             quarter_list = []
-            search = search_lightcurve(ID)
+            search = search_lightcurve(self.ID)
             for i in range(self.quarters):
                 quarter_list.append(int(search.mission[i][-2:]))
-            self.lc_collection = search_lightcurve(ID, cadence=cadence, quarter=quarter_list).download_all(download_dir=self.download_dir, author=pipeline)
+            self.lc_collection = search_lightcurve(self.ID, cadence=self.cadence, quarter=quarter_list, author=self.pipeline).download_all(download_dir=self.download_dir)
             self.lc_raw = self.stitch()
             self.lc_flat = self.lc_raw.flatten(window_length=self.window)
         
         elif type(self.quarters) == list:
-            self.lc_collection = search_lightcurve(ID, cadence=cadence, quarter=self.quarters).download_all(download_dir=self.download_dir, author=pipeline)
+            self.lc_collection = search_lightcurve(self.ID, cadence=self.cadence, quarter=self.quarters, author=self.pipeline).download_all(download_dir=self.download_dir)
             self.lc_raw = self.stitch()
             self.lc_flat = self.lc_raw.flatten(window_length=self.window)
             
         elif self.quarters is None:
-            self.lc_raw = search_lightcurve(ID, cadence=cadence).download(download_dir=self.download_dir)
+            self.lc_raw = search_lightcurve(self.ID, cadence=self.cadence).download(download_dir=self.download_dir)
             self.lc_flat = self.lc_raw.flatten(window_length=self.window)
             
         else:
@@ -139,7 +145,7 @@ class TransitModel(object):
         Stitches together lightcurve collection into single lightcurve. Gives modulo of time to handle inconsistent BJD time in TESS lightcurves.
         """
         if lc_collection == None:
-            lc_collection = self.lc
+            lc_collection = self.lc_collection
             
         flux = []
         time = []
@@ -147,10 +153,10 @@ class TransitModel(object):
         
         for lc in lc_collection:
             [flux.append(f/np.nanmean(lc.flux.value.tolist())) for f in lc.flux.value.tolist()]
-            [time.append(t%2457000) for t in lc.time.value.tolist()]
+            [time.append(float(t%2457000)) for t in lc.time.value.tolist()]
             [flux_error.append(fe) for fe in lc.flux_err.value.tolist()]
 
-        res = lk.LightCurve(time=time, flux=flux, flux_err=flux_error)
+        res = lightkurve.LightCurve(time=time, flux=flux, flux_err=flux_error)
         self.lc = res
         return res
 
@@ -217,7 +223,7 @@ class TransitModel(object):
 
     def chisq(self, theta, porb_bounds):
         """
-        Calculates chi-squard of model fit.
+        Calculates chi-squared of model fit.
         """
         a1, t1, d1, a2, t2, d2, porb = theta
         
@@ -382,7 +388,7 @@ class TransitModel(object):
                 chis.append(chi)
                 ts.append(t0)
                 
-        self.window = window_guesses[np.argmin(chis)]
+        self.window = window_guesses[np.nanargmin(chis)]
         
         # Fold lightcurve again with best value for plotting function
         self.lc_flat = self.lc_raw.flatten(window_length=self.window)
@@ -526,7 +532,10 @@ class TransitModel(object):
         np.save(file_path + f'KIC_{ID}_tmasked', self.lc_tmask_array)
 
         
-    def fit_rotation(self, time=None, flux=None, yerr=None, min_period=0.1, max_period=None, oversample=2.0, smooth=0.5, max_peaks=10, prominence=0.01):
+    def fit_rotation(self, time=None, flux=None, yerr=None, min_period=0.1, max_period=None, oversample=2.0, smooth=0.5, max_peaks=10, prominence=0.01, method='acf'):
+        """
+        Fits rotation period to lightcurve with transits masked.
+        """
         
         rmask = self.lc_rmask
         
@@ -540,28 +549,33 @@ class TransitModel(object):
         
         try:
             x = time.value
-            y = flux
+            y = flux.value
             x_new = x[np.isfinite(x) & np.isfinite(y)]
             y_new = y[np.isfinite(x) & np.isfinite(y)]
 
-            autocorr = exoplanet.autocorr_estimator(x_new, y_new, yerr=yerr, min_period=min_period, max_period=max_period, oversample=oversample, smooth=smooth, max_peaks=max_peaks)
-            lag, acf = autocorr['autocorr']
-            peaks, prominence = find_peaks(acf, prominence=prominence)
-            peaks, prominence
+            if method =='acf':
+                autocorr = exoplanet.autocorr_estimator(x_new, y_new, yerr=yerr, min_period=min_period, max_period=max_period, oversample=oversample, smooth=smooth, max_peaks=max_peaks)
+                lag, acf = autocorr['autocorr']
+                peaks, prominence = find_peaks(acf, prominence=prominence)
+                peaks, prominence
 
-            p = np.argsort(lag[peaks])
-            new_array = lag[peaks][p]
+                p = np.argsort(lag[peaks])
+                new_array = lag[peaks][p]
 
-            if (prominence['prominences'][p][1] > prominence['prominences'][p][0]):
-                high_peak = lag[peaks][p][1]
-            else:
-                high_peak = lag[peaks][p][0]
+                if (prominence['prominences'][p][1] > prominence['prominences'][p][0]):
+                    high_peak = lag[peaks][p][1]
+                else:
+                    high_peak = lag[peaks][p][0]
 
+
+            if method =='ls':
+                    periodogram = rmask.to_periodogram(method='ls')
+                    high_peak = periodogram.period_at_max_power.value
             self.prot = high_peak
-        
+
         except:
             return -1
-    
+        
     def model_fit_summary(self):
         """
         returns a dictionary of all the measured parameters
