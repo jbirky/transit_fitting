@@ -56,6 +56,8 @@ class TransitModel(object):
         ID = str(ID)
         if (mission == 'Kepler') or (mission == 'K2'):
             mission = 'KIC'
+        if (mission == 'TESS'):
+            mission = 'TIC'
             
         if mission == None:
             self.ID = ID
@@ -77,12 +79,13 @@ class TransitModel(object):
         if download_all:
             self.quarters = 'all'
             
-        if (self.pipeline==None) and (self.mission=='TESS'):
+        if (self.pipeline==None) and (self.mission=='TIC'):
             search = search_lightcurve(self.ID)
             self.pipeline = search.author[0]
-            
+        
+        
         self.time_column = None
-        if self.mission == 'TESS':
+        if self.mission == 'TIC':
             self.time_column = 'time'
             
         
