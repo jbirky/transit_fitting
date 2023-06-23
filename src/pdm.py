@@ -37,7 +37,8 @@ class PhaseLightCurve():
         bin_flux = []
         if method == 'rolling_median':
             for i in range(len(self.phase_flux)):
-                bin_flux.append(np.nanmedian(self.phase_flux[i-window:i+window]))
+                flux_window = self.phase_flux.take(indices=range(i-window, i+window), mode='wrap')
+                bin_flux.append(np.nanmedian(flux_window))
             # self.bin_flux = pd.Series(self.norm_phase_flux, center=True).rolling(window).median()
         self.bin_flux = np.array(bin_flux)
         self.norm_bin_flux = self.bin_flux/np.nanmedian(self.bin_flux)

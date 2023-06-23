@@ -31,7 +31,11 @@ def load_masked_lightcurve(tic_id):
     return xnew, ynew, enew
 
 
-def inspect_rotation(time, flux, flux_err, selected_peak=0, ls_period=None, orb_period=None):
+def inspect_rotation(time, flux, flux_err, 
+                     selected_peak=0, 
+                     ls_period=None, 
+                     orb_period=None,
+                     pdm_period=None):
 
     xnew = time[np.isfinite(time) & np.isfinite(flux) & np.isfinite(flux_err)]
     ynew = flux[np.isfinite(time) & np.isfinite(flux) & np.isfinite(flux_err)]
@@ -64,8 +68,10 @@ def inspect_rotation(time, flux, flux_err, selected_peak=0, ls_period=None, orb_
         plt.axvline(best_period, color='g', label="LS rotation period", linestyle='--')
     if orb_period is not None:
         plt.axvline(orb_period, color='m', label="Orbital period", linestyle='--')
+    if pdm_period is not None:
+        plt.axvline(pdm_period, color='y', label="PDM period", linestyle='--')
     plt.fill_between(lag, -sig_level, sig_level, color='k', alpha=.1)
-    plt.legend(loc="upper right")
+    plt.legend(loc="upper right", fontsize=18)
     plt.axhline(0, color='k', linewidth=1)
     plt.xlabel('lag [days]', fontsize=20)
     plt.ylabel('ACF', fontsize=20)
