@@ -655,6 +655,8 @@ class TransitModel(object):
         ax[2].axvline(sol[4], linestyle='--')
         ax[2].axvspan(sol[1]-sol[2]/2, sol[1]+sol[2]/2, alpha=.1)
         ax[2].axvspan(sol[4]-sol[5]/2, sol[4]+sol[5]/2, alpha=.1)
+        ax[2].axvspan(sol[1]-self.dur1/2, sol[1]+self.dur1/2, alpha=.1)
+        ax[2].axvspan(sol[4]-self.dur2/2, sol[4]+self.dur2/2, alpha=.1)
         ax[2].set_xlim(min(tfold), max(tfold))
         ax[2].legend(loc='best', fontsize=22, frameon=False)
         
