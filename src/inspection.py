@@ -33,6 +33,8 @@ def load_masked_lightcurve(tic_id):
 
 def inspect_rotation(time, flux, flux_err, 
                      selected_peak=0, 
+                     min_period=0.1,
+                     max_period=14,
                      ls_period=None, 
                      orb_period=None,
                      pdm_period=None):
@@ -41,8 +43,8 @@ def inspect_rotation(time, flux, flux_err,
     ynew = flux[np.isfinite(time) & np.isfinite(flux) & np.isfinite(flux_err)]
     enew = flux_err[np.isfinite(time) & np.isfinite(flux) & np.isfinite(flux_err)]
 
-    min_period = 0.1
-    max_period = (max(time)-min(time))/2
+    if max_period is None:
+        max_period = (max(time)-min(time))/2
 
     autocorr = exoplanet.autocorr_estimator(xnew, ynew, yerr=enew, min_period=min_period, max_period=max_period)
     lag_full, acf_full = autocorr['autocorr']
@@ -56,16 +58,16 @@ def inspect_rotation(time, flux, flux_err,
 
     if len(peaks) > 0:
         max_peak = peaks_sorted[selected_peak]
-        best_period = lag[peaks][max_peak]
+        acf_period = lag[peaks][max_peak]
 
     fig = plt.figure(figsize=[14,6])
     plt.plot(lag, acf, linewidth=2)
     if len(peaks) > 0:
         for p in peaks:
             plt.axvline(lag[p], linewidth=1)
-        plt.axvline(best_period, color='r', label="Rotation period")
+        plt.axvline(acf_period, color='r', label="Rotation period")
     if ls_period is not None:
-        plt.axvline(best_period, color='g', label="LS rotation period", linestyle='--')
+        plt.axvline(ls_period, color='g', label="LS rotation period", linestyle='--')
     if orb_period is not None:
         plt.axvline(orb_period, color='m', label="Orbital period", linestyle='--')
     if pdm_period is not None:
@@ -82,7 +84,7 @@ def inspect_rotation(time, flux, flux_err,
     # =============================
 
     if len(peaks) > 0:
-        phase = time % best_period
+        phase = time % acf_period
         plt.figure(figsize=[14,6])
         plt.scatter(phase, flux, color='k', s=5)
         plt.xlabel("Phase [days]", fontsize=20)
@@ -97,7 +99,7 @@ def inspect_rotation(time, flux, flux_err,
     plt.xlim(min(time), max(time))
     plt.show()
     
-    return best_period
+    return acf_period
 
 
 def plot_t0(model, t0_guess, tic=None):  
