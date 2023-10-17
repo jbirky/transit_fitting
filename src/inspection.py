@@ -11,10 +11,10 @@ __all__ = ["format_t0_from_table",
 def format_t0_from_table(table_entry):
     
     t0_guess = np.zeros(7)
-    t0_guess[0]= table_entry['primary transit amplitute']
+    t0_guess[0]= table_entry['primary transit amplitude']
     t0_guess[1]= table_entry['primary transit time']
     t0_guess[2]= table_entry['primary transit duration']
-    t0_guess[3]= table_entry['secondary transit amplitute']
+    t0_guess[3]= table_entry['secondary transit amplitude']
     t0_guess[4]= table_entry['secondary transit time']
     t0_guess[5]= table_entry['secondary transit duration']
     t0_guess[6]= table_entry['orbital period']
