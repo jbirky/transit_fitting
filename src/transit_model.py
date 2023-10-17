@@ -40,13 +40,13 @@ class TransitModel(object):
 
     def __init__(self,
                  ID,
-                 mission = None,
-                 pipeline = None,
+                 search=None,
+                 mission=None,
+                 pipeline=None,
                  window=51, 
                  porb_max=None, 
                  download_dir=None,
                  download_all=False,
-                 quarters=None, 
                  cadence="long", 
                  fill_gaps=False):
         """     
@@ -78,55 +78,28 @@ class TransitModel(object):
         self.window = window
         
         self.download_dir = download_dir
-        self.quarters = quarters
         self.fill_gaps = fill_gaps
+        self.cadence = cadence 
         
-        self.cadence = cadence
-        
-        
-        if download_all:
-            self.quarters = 'all'
-            
-        if (self.pipeline==None) and (self.mission=='TIC'):
-            search = search_lightcurve(self.ID)
-            self.pipeline = search.author[0]
-        
-        
-        self.time_column = None
-        if self.mission == 'TIC':
-            self.time_column = 'time'
-            
-        
-        if type(self.quarters) == str:
-            if self.quarters.lower() == 'all':
-                self.lc_collection = search_lightcurve(self.ID, author=self.pipeline).download_all(download_dir=self.download_dir)
-                self.lc_raw = self.stitch(lc_collection=self.lc_collection)
-            else:
-                print('Invalid string for quarters argument')
-            
-        elif type(self.quarters) == int:
-            quarter_list = []
-            search = search_lightcurve(self.ID)
-            for i in range(self.quarters):
-                quarter_list.append(int(search.mission[i][-2:]))
-            
-            self.lc_collection = search_lightcurve(self.ID, author=self.pipeline).download_all(download_dir=self.download_dir)
-            self.lc_raw = self.stitch(lc_collection=self.lc_collection)
-        
-        elif type(self.quarters) == list:
-            self.lc_collection = search_lightcurve(self.ID, author=self.pipeline).download_all(download_dir=self.download_dir)
-            self.lc_raw = self.stitch(lc_collection=self.lc_collection)
-            
-        elif self.quarters is None:
-            self.nsector = 1
-            self.lc_raw = search_lightcurve(self.ID, cadence=self.cadence).download(download_dir=self.download_dir)
-            
-        else:
-            print('Invalid quarters argument')
-            sys.exit() # I guess this isn't the right way to kill the program? I'll figure out later
+        if search is not None:
+            self.search = search
+            self.lc_collection = self.search.download_all(download_dir=self.download_dir)
+            self.lc_raw = self.stitch()
+
+        elif (search is None) and (download_all == True):
+            self.search = search_lightcurve(self.ID, mission=self.mission, cadence=self.cadence)
+            self.lc_collection = self.search.download_all(download_dir=self.download_dir)
+            self.lc_raw = self.stitch()
+
+        elif (search is None) and (download_all == False):
+            self.search = search_lightcurve(self.ID, mission=self.mission, cadence=self.cadence)
+            self.raw = self.search.download(download_dir=self.download_dir)
+
+        # flatten lightcurve
+        self.lc_flat = self.lc_raw.flatten(window_length=self.window)
 
         # offset time array to zero
-        self.lc_raw.time = self.lc_raw.time.jd - min(self.lc_raw.time.jd)
+        self.lc_raw.time = self.lc_raw.time.jd #- min(self.lc_raw.time.jd)
 
         # create flattened lightcurve 
         self.lc_flat = self.lc_raw.flatten(window_length=self.window)
@@ -165,6 +138,7 @@ class TransitModel(object):
             
         self.nsector = len(self.lc_collection)
         for ii in range(self.nsector):
+            self.lc_collection[ii].time = self.lc_collection[ii].time.jd
             self.lc_collection[ii].flux = (self.lc_collection[ii].flux / np.nanmedian(self.lc_collection[ii].flux)).value
             self.lc_collection[ii].flux_err = (self.lc_collection[ii].flux_err / np.nanmedian(self.lc_collection[ii].flux)).value
 
@@ -437,7 +411,6 @@ class TransitModel(object):
         
         return self.dur1, self.dur2
 
-
     def est_eccentricity(self, sol=None):
         """
         returns eccentricity estimate, given a solution array (a1, t1, d1, a2, t2, d2, porb)
@@ -470,7 +443,7 @@ class TransitModel(object):
         return self.ecc
 
 
-    def apply_transit_mask(self, sol=None, sigma_clip=3, remove_outliers=True):
+    def apply_transit_mask(self, sol=None, sigma_clip=3, remove_outliers=False):
         """
         returns transit and rotation masks, given a solution array (a1, t1, d1, a2, t2, d2, porb)
         """
@@ -606,7 +579,14 @@ class TransitModel(object):
     
     
 
-    def plot_best_fit(self, figsize=None, t0=None, sol=None, show=True, save_dir=None, tlim=None,
+    def plot_best_fit(self, 
+                      figsize=None, 
+                      t0=None, 
+                      sol=None, 
+                      show=True, 
+                      save_dir=None, 
+                      save_name=None,
+                      tlim=None,
                       label_font=25):
         """
         4-panel plot with raw lightcurve, flattened lc, model fit, and masked lc
@@ -685,10 +665,12 @@ class TransitModel(object):
             ax[4].set_xlabel("Rotational Phase [d]", fontsize=label_font)
             ax[4].minorticks_on()
         
+        if save_name is None:
+            save_name = f'{self.ID}.png'
         if save_dir is not None:
             if not os.path.exists(save_dir):
                 os.makedirs(save_dir)
-            plt.savefig(save_dir + f'{self.ID}.png')
+            plt.savefig(save_dir + save_name)
 
         
         if show:
